@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#121a23" />
+    <title>InPost Air — mapa pomiarów</title>
+    <meta name="description" content="Sprawdzaj, które paczkomaty InPost udostępniają aktualne pomiary jakości powietrza." />
+    <link rel="preconnect" href="https://tile.openstreetmap.org" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoesq+1tPI3l2g=" crossorigin="" />
+    <link rel="stylesheet" href="/static/style.css" />
+    <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script defer src="/static/app.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand"><span class="brand-mark" aria-hidden="true">◈</span><div><strong>InPost Air</strong><span>MAPA POMIARÓW</span></div></div>
+        <div class="intro"><span class="eyebrow">DANE NA ŻYWO</span><h1>Powietrze<br /><em>przy paczkomacie.</em></h1><p>Sprawdź, które punkty udostępniają pomiary. Kliknij znacznik, aby zobaczyć wszystkie czujniki.</p></div>
+        <div class="search-wrap"><label for="search">Znajdź paczkomat lub miasto</label><div class="search-field"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="np. SPA01N lub Szklarska Poręba" autocomplete="off" /></div><div id="search-results" class="search-results" hidden></div></div>
+        <div class="view-controls"><div class="section-head"><strong>Widok mapy</strong><span id="count">—</span></div><div class="filter-row" role="group" aria-label="Filtr paczkomatów"><button id="filter-all" class="filter active" type="button">Wszystkie</button><button id="filter-active" class="filter" type="button">Z pomiarami</button></div><button id="scan" class="scan-button" type="button"><span aria-hidden="true">↻</span> Sprawdź widoczne punkty</button><p id="scan-status" class="small-note" role="status">Zbliż mapę, aby sprawdzić paczkomaty w okolicy.</p></div>
+        <div class="legend"><div><i class="dot active-dot"></i> Aktualne pomiary</div><div><i class="dot stale-dot"></i> Starszy pomiar</div><div><i class="dot unknown-dot"></i> Niesprawdzony</div><div><i class="dot no-data-dot"></i> Brak danych</div><div><i class="dot error-dot"></i> Błąd sprawdzenia</div></div>
+        <div class="sidebar-foot">Źródło pomiarów: strony InPost. Lokalizacja i kafelki: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>.<br />Status oznacza wynik ostatniego sprawdzenia, a nie stan techniczny czujnika.</div>
+      </aside>
+      <main class="map-area"><div id="map" role="application" aria-label="Mapa paczkomatów InPost"></div><div id="map-message" class="map-message" role="status">Wczytywanie paczkomatów…</div><div class="map-badge">POLSKA <span>·</span> OPENSTREETMAP</div></main>
+      <section id="detail" class="detail-panel" aria-label="Dane paczkomatu" hidden><button id="detail-close" class="close" type="button" aria-label="Zamknij panel">×</button><div id="detail-content"></div></section>
+    </div>
+  </body>
+</html>

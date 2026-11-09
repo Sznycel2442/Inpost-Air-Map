@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+.venv/
+data/
+preview-data/
+tests/tmp*/
+tests/test-data-*/
