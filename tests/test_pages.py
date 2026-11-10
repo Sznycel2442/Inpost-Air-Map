@@ -44,6 +44,7 @@ class PagesTests(unittest.TestCase):
         self.assertIn('data-mode="pages"', html)
         self.assertIn('href="static/style.css"', html)
         self.assertIn('src="static/app.js"', html)
+        self.assertIn('integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="', html)
         self.assertNotIn('src="/static/app.js"', html)
 
 
