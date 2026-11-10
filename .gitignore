@@ -2,6 +2,7 @@ __pycache__/
 *.py[cod]
 .venv/
 data/
+dist/
 preview-data/
 tests/tmp*/
 tests/test-data-*/

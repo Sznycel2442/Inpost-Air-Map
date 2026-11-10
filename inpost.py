@@ -41,6 +41,8 @@ def locker_url(point: dict, english: bool = False) -> str:
 def normalize_point(raw: dict) -> dict | None:
     """Retain only the public fields needed by the map."""
     try:
+        if raw.get("t") not in (None, 1):
+            return None
         code = str(raw["n"]).upper()
         lat = float(raw["l"]["a"])
         lon = float(raw["l"]["o"])

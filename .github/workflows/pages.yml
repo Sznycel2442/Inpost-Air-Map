@@ -1,0 +1,51 @@
+name: Publish map
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 */12 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install curl-cffi==0.16.3
+      - name: Refresh a bounded set of readings
+        if: github.event_name != 'push'
+        run: python build_pages_data.py --count 20
+        continue-on-error: true
+      - name: Save refreshed snapshot
+        if: github.event_name != 'push'
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add site-data/points.json site-data/readings.json
+          if ! git diff --cached --quiet; then
+            git commit -m "data: refresh InPost Air snapshot"
+            git push origin HEAD:main
+          fi
+      - run: python prepare_pages.py
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+      - uses: actions/deploy-pages@v4
+        id: deployment

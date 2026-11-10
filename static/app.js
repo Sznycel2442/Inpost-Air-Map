@@ -28,6 +28,9 @@ let filter = "all";
 let loadingVersion = 0;
 let scanning = false;
 let visibleTruncated = false;
+const pagesMode = document.documentElement.dataset.mode === "pages";
+let staticDataPromise;
+let snapshotInfo = "";
 const labels = {
   PM1: ["PM 1", "µg/m³"], PM25: ["PM 2,5", "µg/m³"],
   PM10: ["PM 10", "µg/m³"], PM4: ["PM 4", "µg/m³"],
@@ -47,10 +50,72 @@ function escapeHtml(value) {
 }
 
 async function jsonRequest(path, options) {
+  if (pagesMode) return staticRequest(path, options);
   const response = await fetch(path, options);
   const body = await response.json();
   if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
   return body;
+}
+
+async function loadStaticData() {
+  if (!staticDataPromise) {
+    staticDataPromise = Promise.all([
+      fetch("site-data/points.json", { cache: "no-store" }),
+      fetch("site-data/readings.json", { cache: "no-store" }),
+    ]).then(async ([pointsResponse, readingsResponse]) => {
+      if (!pointsResponse.ok || !readingsResponse.ok) {
+        throw new Error("Nie udało się pobrać plików danych mapy z GitHub Pages.");
+      }
+      const [points, readings] = await Promise.all([pointsResponse.json(), readingsResponse.json()]);
+      if (!Array.isArray(points) || typeof readings.results !== "object") {
+        throw new Error("Pliki danych mapy mają nieprawidłowy format.");
+      }
+      const byCode = new Map(points.map((point) => [point.n, point]));
+      snapshotInfo = `Migawka pomiarów: ${timeLabel(readings.generated_at)}. Sprawdzono ${Object.keys(readings.results).length} punktów.`;
+      elements.scanStatus.textContent = snapshotInfo;
+      return { points, byCode, readings: readings.results };
+    }).catch((error) => {
+      staticDataPromise = undefined;
+      throw error;
+    });
+  }
+  return staticDataPromise;
+}
+
+function withReading(point, readings) {
+  const reading = readings[point.n];
+  if (!reading) return { ...point, status: "unknown" };
+  let status = reading.status;
+  const maxAge = pagesMode ? 24 * 60 * 60 * 1000 : 15 * 60 * 1000;
+  if (status === "active" && Date.now() - Date.parse(reading.checked_at) >= maxAge) {
+    status = "stale";
+  }
+  return { ...point, ...reading, status };
+}
+
+async function staticRequest(path, options) {
+  if (options?.method === "POST") throw new Error("GitHub Pages pokazuje zapisane pomiary. Otwórz stronę InPost, aby sprawdzić bieżące dane.");
+  const { points, byCode, readings } = await loadStaticData();
+  const url = new URL(path, location.origin);
+  if (url.pathname === "/api/points") {
+    const west = Number(url.searchParams.get("west"));
+    const south = Number(url.searchParams.get("south"));
+    const east = Number(url.searchParams.get("east"));
+    const north = Number(url.searchParams.get("north"));
+    const visible = points.filter((point) => west <= point.lon && point.lon <= east && south <= point.lat && point.lat <= north);
+    return { points: visible.slice(0, 500).map((point) => ({ ...point, status: withReading(point, readings).status })), total: visible.length, truncated: visible.length > 500 };
+  }
+  if (url.pathname === "/api/search") {
+    const query = (url.searchParams.get("q") || "").toLocaleLowerCase("pl-PL");
+    return { points: points.filter((point) => point.n.toLowerCase().includes(query) || point.city.toLocaleLowerCase("pl-PL").includes(query)).slice(0, 20).map((point) => withReading(point, readings)) };
+  }
+  const match = url.pathname.match(/^\/api\/points\/([^/]+)$/);
+  if (match) {
+    const point = byCode.get(decodeURIComponent(match[1]).toUpperCase());
+    if (!point) throw new Error("Nie znaleziono paczkomatu.");
+    return withReading(point, readings);
+  }
+  throw new Error("Nieznane żądanie danych mapy.");
 }
 
 function markerIcon(status, selected) {
@@ -66,7 +131,7 @@ function renderMarkers() {
   markers.clearLayers();
   markerByCode.clear();
   for (const point of visiblePoints) {
-    if (filter === "active" && point.status !== "active") continue;
+    if (filter === "active" && !["active", "stale"].includes(point.status)) continue;
     const marker = L.marker([point.lat, point.lon], {
       icon: markerIcon(point.status, selectedCode === point.n),
       title: `${point.n}, ${point.city} — ${statusLabels[point.status] || "Nie sprawdzono"}`,
@@ -99,10 +164,10 @@ async function loadVisible() {
     renderMarkers();
     if (data.truncated) {
       setMessage(`W obszarze jest ${data.total} punktów. Zbliż mapę, aby zobaczyć wszystkie.`);
-      elements.scanStatus.textContent = "Zbliż mapę przed sprawdzaniem punktów.";
+      elements.scanStatus.textContent = pagesMode ? snapshotInfo : "Zbliż mapę przed sprawdzaniem punktów.";
     } else {
       setMessage("", false);
-      elements.scanStatus.textContent = `Widoczne punkty: ${data.total}. Sprawdź maksymalnie 30 na raz.`;
+      elements.scanStatus.textContent = pagesMode ? snapshotInfo : `Widoczne punkty: ${data.total}. Sprawdź maksymalnie 30 na raz.`;
     }
   } catch (error) {
     if (version === loadingVersion) setMessage(error.message);
@@ -136,7 +201,7 @@ function renderDetail(point, checking = false) {
   const detailText = status === "no_data"
     ? "Nie znaleziono aktualnej liczbowej wartości czujnika. To nie potwierdza awarii samego urządzenia."
     : status === "unknown"
-      ? "Ten paczkomat nie był jeszcze sprawdzany. Kliknij „Sprawdź teraz”, aby pobrać pomiary."
+      ? (pagesMode ? "Dla tego paczkomatu nie ma jeszcze zapisanego odczytu w migawce mapy." : "Ten paczkomat nie był jeszcze sprawdzany. Kliknij „Sprawdź teraz”, aby pobrać pomiary.")
       : status === "error"
         ? `Nie udało się odczytać danych: ${escapeHtml(point.error || "Nieznany błąd")}. Spróbuj ponownie później.`
         : status === "stale"
@@ -150,9 +215,9 @@ function renderDetail(point, checking = false) {
     ${hasMeasurements ? measurementsHtml(point.measurements) : ""}
     ${detailText ? `<p class="detail-muted ${status === "error" ? "detail-error" : ""}">${detailText}</p>` : ""}
     <div class="detail-meta">Ostatnie sprawdzenie: ${timeLabel(point.checked_at)}${point.air_index_level == null ? "" : `<br />Indeks InPost: ${escapeHtml(point.air_index_level)}`}</div>
-    <div class="detail-actions"><button id="detail-check" type="button" ${checking ? "disabled" : ""}>${checking ? "Sprawdzanie…" : "Sprawdź teraz"}</button><a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">Strona InPost ↗</a></div>
+    <div class="detail-actions">${pagesMode ? "" : `<button id="detail-check" type="button" ${checking ? "disabled" : ""}>${checking ? "Sprawdzanie…" : "Sprawdź teraz"}</button>`}<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">Strona InPost ↗</a></div>
   `;
-  document.getElementById("detail-check").addEventListener("click", () => { checkPoint(point.n).catch(() => {}); });
+  if (!pagesMode) document.getElementById("detail-check").addEventListener("click", () => { checkPoint(point.n).catch(() => {}); });
 }
 
 async function selectPoint(code) {
@@ -165,7 +230,7 @@ async function selectPoint(code) {
     const point = await jsonRequest(`/api/points/${encodeURIComponent(code)}`);
     if (version !== selectionVersion) return;
     renderDetail(point);
-    if (point.status === "unknown" || point.status === "stale") checkPoint(code).catch(() => {});
+    if (!pagesMode && (point.status === "unknown" || point.status === "stale")) checkPoint(code).catch(() => {});
   } catch (error) {
     if (version === selectionVersion) elements.detailContent.textContent = error.message;
   }
@@ -193,6 +258,12 @@ async function checkPoint(code) {
 }
 
 async function scanVisible() {
+  if (pagesMode) {
+    staticDataPromise = undefined;
+    await loadVisible();
+    if (selectedCode) selectPoint(selectedCode);
+    return;
+  }
   if (scanning) return;
   if (visibleTruncated) {
     elements.scanStatus.textContent = "Zbliż mapę, aby ograniczyć liczbę punktów.";
